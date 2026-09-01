@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { width: 296px; margin: 0; font: 12px/1.35 "Segoe UI", system-ui, sans-serif; background: #111318; color: #e8ebf0; }
+    .wrap { padding: 16px; }
+    header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; }
+    h1 { font-size: 16px; margin: 0; letter-spacing: .1px; }
+    .ver { color: #7f8998; font-size: 10px; }
+    .status-card { border: 1px solid #292e37; border-radius: 10px; padding: 5px 10px; background: #171a20; }
+    .status-row { min-height: 32px; display: grid; grid-template-columns: 10px 1fr auto; gap: 8px; align-items: center; border-bottom: 1px solid #252a32; }
+    .status-row:last-child { border-bottom: 0; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #687180; }
+    .dot.connected { background: #3fcf8e; }
+    .dot.connecting { background: #f2b84b; }
+    .dot.error { background: #f06a6a; }
+    .value { color: #aeb6c2; font-size: 11px; text-align: right; }
+    label { display: block; color: #aeb6c2; margin: 14px 0 5px; }
+    select, button { width: 100%; min-height: 34px; border-radius: 8px; font: inherit; }
+    select { border: 1px solid #333a46; background: #171a20; color: #e8ebf0; padding: 0 9px; }
+    .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+    button { border: 0; padding: 8px 10px; cursor: pointer; }
+    button:disabled { cursor: default; opacity: .45; }
+    .primary { background: #dfe7f4; color: #111318; font-weight: 650; }
+    .danger { background: #382126; color: #ffb4bd; border: 1px solid #61323a; }
+    .secondary { background: #222730; color: #d9dee6; border: 1px solid #303743; margin-top: 8px; }
+    .secondary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .hint { min-height: 31px; margin-top: 10px; color: #8993a2; font-size: 10.5px; }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header><h1>StudioLink Lite</h1><span id="ver" class="ver"></span></header>
+    <section class="status-card" aria-label="Connection status">
+      <div class="status-row"><span id="bridge-dot" class="dot"></span><span>Bridge</span><span id="bridge-state" class="value">Connecting</span></div>
+      <div class="status-row"><span id="studio-dot" class="dot"></span><span>Roblox Studio</span><span id="studio-state" class="value">Connecting</span></div>
+      <div class="status-row"><span id="agent-dot" class="dot"></span><span>Agent</span><span id="agent-state" class="value">Idle</span></div>
+    </section>
+
+    <label for="provider">Provider</label>
+    <select id="provider"></select>
+
+    <div class="actions">
+      <button class="primary" id="start">Start Session</button>
+      <button class="danger" id="stop" disabled>Stop Session</button>
+    </div>
+    <button class="secondary" id="settings">Settings</button>
+    <div class="secondary-grid">
+      <button class="secondary" id="reconnect">Reconnect bridge</button>
+      <button class="secondary" id="restart">Restart StudioMCP</button>
+    </div>
+    <div id="hint" class="hint">Open a supported AI chat to start a session.</div>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>

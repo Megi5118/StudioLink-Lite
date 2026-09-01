@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360">
+  <rect width="1200" height="360" rx="28" fill="#111318"/>
+  <g transform="translate(82 106)">
+    <rect width="148" height="148" rx="34" fill="#181c23" stroke="#303743" stroke-width="2"/>
+    <path d="M38 45h22a11 11 0 0 1 0 22H46a17 17 0 0 0 0 34h23" fill="none" stroke="#e8ebf0" stroke-width="12" stroke-linecap="round"/>
+    <path d="M110 103H88a11 11 0 0 1 0-22h14a17 17 0 0 0 0-34H79" fill="none" stroke="#8fa6c8" stroke-width="12" stroke-linecap="round"/>
+    <circle cx="38" cy="45" r="9" fill="#3fcf8e"/><circle cx="110" cy="103" r="9" fill="#3fcf8e"/>
+  </g>
+  <text x="270" y="168" font-family="Segoe UI,Arial,sans-serif" font-size="62" font-weight="700" fill="#f0f3f8">StudioLink Lite</text>
+  <text x="273" y="222" font-family="Segoe UI,Arial,sans-serif" font-size="25" fill="#9ca8b8">Local AI ↔ Roblox Studio development bridge</text>
+  <text x="273" y="267" font-family="Segoe UI,Arial,sans-serif" font-size="17" fill="#667386">Chromium · WebSocket · StudioMCP · no telemetry</text>
+</svg>
