@@ -42,8 +42,8 @@
   const LEN = "data-zs-cm-len";
 
   // Republishing a 10k-char attribute on every sample would churn the DOM (the
-  // core samples the stream ~8x/s). Only write when the document actually grew
-  // or changed length, tracked per node so a re-render starts clean.
+  // core samples the stream ~8x/s). CodeMirror documents are immutable: track
+  // identity, not length, because an equal-length replacement is still new code.
   const seen = new WeakMap();
 
   // The view can hang off the content node directly, or off its own dom's tile.
@@ -61,17 +61,26 @@
     return st && st.doc ? st.doc : null;
   }
 
+  function clearSnapshot(content) {
+    // Never prefer old code when the page replaces or invalidates its editor.
+    content.removeAttribute(ATTR);
+    content.removeAttribute(LEN);
+    seen.delete(content);
+    return false;
+  }
+
   function syncOne(content) {
-    const doc = docOf(content);
-    if (!doc) return false;
+    let doc;
+    try { doc = docOf(content); } catch { return clearSnapshot(content); }
+    if (!doc) return clearSnapshot(content);
     const len = doc.length;
-    if (seen.get(content) === len && content.hasAttribute(ATTR)) return true;
+    if (seen.get(content) === doc && content.hasAttribute(ATTR)) return true;
     let text;
-    try { text = doc.toString(); } catch { return false; }
+    try { text = doc.toString(); } catch { return clearSnapshot(content); }
     try {
       content.setAttribute(ATTR, text);
       content.setAttribute(LEN, String(len));
-      seen.set(content, len);
+      seen.set(content, doc);
     } catch { return false; }
     return true;
   }

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "StudioLink Lite",
-  "version": "1.6.0",
+  "version": "1.6.2",
   "description": "A lightweight local AI-to-Roblox-Studio bridge for personal development.",
   "permissions": ["storage"],
   "host_permissions": [

@@ -6,7 +6,8 @@
 // background.js PROVIDER_URLS + manifest host_permissions + popup.js
 // SUPPORTED_HOSTS + main.js AI_SITES).
 //
-// ChatGPT DOM notes (re-validated live, 2026-08 - chatgpt.com, logged in, fr-FR):
+// Legacy logged-in DOM notes (2026-08). Compatibility fallbacks below also
+// recognize the lightweight signed-out shell observed on 2026-09-03.
 //  - React app. One message = a <div data-message-author-role="user|assistant">
 //    carrying a stable data-message-id (a UUID). There is NO <article> wrapper
 //    anymore, so these elements alternate in DOM order and map 1:1 onto the
@@ -67,7 +68,7 @@ const ZSProvider = (() => {
     userRole: "user",
     assistantRole: "assistant",
     reply: ".markdown",
-    editor: "#prompt-textarea",
+    editor: '#prompt-textarea, [data-testid="prompt-textarea"], form [data-lexical-editor="true"], #mobile-composer-prompt, [data-mobile-composer-prompt]',
     // The ONE submit control; its data-testid says whether it is currently a
     // send or a stop button (see isStopBtn). Id first - it survives testid churn.
     submitBtn: "#composer-submit-button, button[data-testid='send-button'], button[data-testid='stop-button']",
@@ -217,15 +218,29 @@ const ZSProvider = (() => {
   }
 
   // ── DOM primitives ────────────────────────────────────────────────────────
+  const visible = (el) => !!el && !el.closest('[hidden], [aria-hidden="true"]') &&
+    el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden";
   const allItems = () => [...document.querySelectorAll(S.msg)];
   const assistantItems = () => allItems().filter(isAssistantItem);
   const assistantCount = () => assistantItems().length;
   const userCount = () => allItems().filter(isUserItem).length;
-  const getEditor = () => document.querySelector(S.editor);
+  const getEditor = () => [...document.querySelectorAll(S.editor)].find((el) =>
+    visible(el) && (el.tagName === "TEXTAREA" || el.hasAttribute("contenteditable"))) || null;
+  const isTextarea = (el) => !!el && el.tagName === "TEXTAREA";
   const editorText = () => {
     const e = getEditor();
-    return e ? e.textContent || "" : "";
+    return e ? (isTextarea(e) ? e.value : e.innerText || e.textContent || "") : "";
   };
+
+  function composerStatus() {
+    const lightweight = [...document.querySelectorAll("form[data-mobile-composer]")].find(visible);
+    if (lightweight) {
+      return { ready: false, title: "Sign in to ChatGPT",
+        detail: "This lightweight ChatGPT page reloads on submit. Sign in and open a new chat in the full ChatGPT interface, then reload this tab before starting StudioLink Lite." };
+    }
+    return getEditor() ? { ready: true } : { ready: false, title: "ChatGPT input not found",
+      detail: "Wait for ChatGPT to load, close any dialog and reload the tab. If the input is still missing, this ChatGPT layout is not recognized by StudioLink Lite." };
+  }
 
   const lastAssistant = () => {
     const it = assistantItems();
@@ -270,27 +285,15 @@ const ZSProvider = (() => {
     return ed.closest("[class*='prosemirror-parent']") || ed;
   };
 
-  // Where the StudioLink Lite bar lives: INSIDE the rounded composer surface (the
-  // element carrying --composer-surface-primary), like DeepSeek - not floating
-  // above it, which is narrower than the composer and covers the page's greeting.
-  //
-  // That surface lays its children out in a CSS grid whose template is
-  //   "header header header" / "leading primary trailing" / ". footer ."
-  // so a child with no grid-area gets auto-placed into a cell and steals the
-  // editor's column - validated live: the input collapsed to zero width. The
-  // `header` area is the full-width row across the top, exactly the slot we want,
-  // and it is empty by default (1px tall). overlay.css puts our bar there via
-  // `#zs-bar.zs-prov-chatgpt { grid-area: header; }`.
-  function barMount() {
+  // Keep the bar OUTSIDE ChatGPT's grid and React-managed composer. New layouts
+  // have no named "header" area: assigning grid-area:header creates an implicit
+  // column, squeezing the editor and native send/voice controls to the left.
+  // The core anchors our independent layer to the surface and reserves a strip
+  // with padding, without inserting any child or changing the site's grid.
+  const barAnchor = () => {
     const ed = getEditor();
-    if (!ed) return null;
-    const box = ed.closest("[class*='composer-surface']");
-    if (!box) return null;
-    // Skip our own bar if already mounted, otherwise we'd insert it before itself.
-    let before = box.firstElementChild;
-    if (before && before.id === "zs-bar") before = before.nextElementSibling;
-    return { parent: box, before, inside: true };
-  }
+    return ed && (ed.closest("[data-composer-surface], [class*='composer-surface']") || ed.closest("form"));
+  };
 
   // ── Input lock ────────────────────────────────────────────────────────────
   // ProseMirror is a contenteditable: flipping contenteditable=false blocks the
@@ -300,7 +303,8 @@ const ZSProvider = (() => {
     _locked = on;
     const ed = getEditor();
     if (!ed) return;
-    ed.setAttribute("contenteditable", on ? "false" : "true");
+    if (isTextarea(ed)) ed.readOnly = !!on;
+    else ed.setAttribute("contenteditable", on ? "false" : "true");
     if (on) ed.setAttribute("data-zs-locked", "1");
     else ed.removeAttribute("data-zs-locked");
   }
@@ -316,9 +320,11 @@ const ZSProvider = (() => {
   // raised "ChatGPT did not accept the injected message after 4 attempts".
   const isStopBtn = (b) => !!b && b.getAttribute("data-testid") === "stop-button";
   const submitButton = () => {
-    const b = document.querySelector(S.submitBtn);
-    return b && b.offsetParent !== null ? b : null;
+    const editor = getEditor();
+    const scope = editor && editor.closest("form");
+    return [...(scope || document).querySelectorAll(S.submitBtn)].find(visible) || null;
   };
+  const buttonDisabled = (b) => !b || b.disabled || b.getAttribute("aria-disabled") === "true";
   const sendButton = () => {
     const b = submitButton();
     return b && !isStopBtn(b) ? b : null;
@@ -330,10 +336,8 @@ const ZSProvider = (() => {
 
   // ── Generation detection ──────────────────────────────────────────────────
   // The stop button is present for the ENTIRE generation, so detection is simple.
-  // Growth tracking covers the instants around start/end AND the wedged-stop case
-  // - which DOES happen on ChatGPT (seen live: the reply had finished, yet the
-  // submit control stayed in its "Interrompre la réponse" role, so every send was
-  // refused and the tool result was stranded in the composer). See unwedgeStop.
+  // Growth tracking covers the brief gaps around the native stop signal.
+  // It never overrides a visible Stop control during a long reasoning phase.
   function streamText(item) {
     return item ? textWithout(item, ".zs-chip") : "";
   }
@@ -351,52 +355,16 @@ const ZSProvider = (() => {
   }
   const grewWithin = (ms) => _streamMax > 1 && Date.now() - _streamAt < ms;
 
-  const WEDGE_MS = 10000;
-  let _stopSince = 0;
+  // Reasoning may leave the visible answer unchanged for minutes. A native Stop
+  // control remains authoritative until ChatGPT removes it or the user stops it.
+  const hasActiveGeneration = () => !!stopButton();
   function genActive() {
     sampleStream();
-    const stop = !!stopButton();
-    const now = Date.now();
-    if (stop) {
-      if (!_stopSince) _stopSince = now;
-      // Trust the stop button while the stream advances, or just after it
-      // appeared (generation spinning up). Frozen past WEDGE_MS ⇒ treat as done.
-      return (now - _streamAt < WEDGE_MS) || (now - _stopSince < 2000);
-    }
-    _stopSince = 0;
-    return grewWithin(timings.GEN_IDLE_MS);
+    return hasActiveGeneration() || grewWithin(timings.GEN_IDLE_MS);
   }
   const isGenerating = genActive;
   const isBusyNow = genActive;
   const isHardGenerating = genActive;
-
-  // Clicking the frozen stop returns the control to its send role, so the pending
-  // injection can go out. Guarded by genActive so a genuinely live generation is
-  // NEVER aborted - during a real stream every attempt below is refused.
-  function unwedgeStop() {
-    const stop = stopButton();
-    if (stop && !genActive()) {
-      diag("send.unwedge", {});
-      try { stop.click(); } catch {}
-      return true;
-    }
-    return false;
-  }
-
-  // One attempt is not enough: genActive() latches true for 2s from the FIRST
-  // moment it sees a stop button (_stopSince), so an attempt made right after the
-  // page or the turn came up is refused by that latch alone. Retry across the
-  // window, then confirm the send role actually came back. (Same reasoning as
-  // gemini.js, where a single attempt let the system prompt sit in the composer.)
-  async function unwedgeStopPersistently(totalMs = 4000) {
-    const t0 = Date.now();
-    while (Date.now() - t0 < totalMs) {
-      if (sendButton()) return true;
-      if (unwedgeStop() && await waitFor(() => !!sendButton(), 1500)) return true;
-      await sleep(250);
-    }
-    return !!sendButton();
-  }
 
   // ChatGPT exposes no reliable per-turn "stopped" marker → never halted.
   const turnHalted = () => false;
@@ -545,6 +513,13 @@ const ZSProvider = (() => {
   // Fallback: type it. Yielding does not make this faster - it keeps the page
   // alive while it happens, so the user can still click (and Stop still works).
   async function typeEditorText(ed, text) {
+    ed.focus();
+    if (isTextarea(ed)) {
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set;
+      setter.call(ed, String(text));
+      ed.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+      return;
+    }
     selectAll(ed);
     const lines = String(text).split("\n");
     const t0 = Date.now();
@@ -564,13 +539,25 @@ const ZSProvider = (() => {
   }
 
   async function typeAndSend(text, images) {
+    const status = composerStatus();
+    if (!status.ready) throw new Error(status.detail);
+    if (hasActiveGeneration()) throw new Error("ChatGPT is still generating. Wait for the response to finish, or press Stop yourself before resuming.");
     const ed = getEditor();
     if (!ed) throw new Error("ChatGPT input box not found");
     text = truncateForSend(text);
     const relock = _locked;
-    if (relock) ed.setAttribute("contenteditable", "true"); // injection needs it editable
+    if (relock) {
+      if (isTextarea(ed)) ed.readOnly = false;
+      else ed.setAttribute("contenteditable", "true");
+    }
     try {
       await setEditorText(ed, text);
+      // Never submit a partial/ignored edit. React or a composer replacement can
+      // reject the browser editing commands even when no JavaScript error fires.
+      const normalize = (value) => String(value).replace(/\r\n?/g, "\n").replace(/\n+$/, "");
+      if (getEditor() !== ed || normalize(editorText()) !== normalize(text)) {
+        throw new Error("ChatGPT did not accept the complete message in its input. Reload the tab and try again; no message was submitted.");
+      }
       // Attach images LAST, right before the send click - see gemini.js/deepseek.js
       // typeAndSend for why (attaching first and then retyping the text can sever
       // the site's binding between the pending upload and the message sent).
@@ -581,30 +568,28 @@ const ZSProvider = (() => {
         const t0 = Date.now();
         while (Date.now() - t0 < 25000) {
           const b = sendButton();
-          if (b && !b.disabled) { try { b.click(); } catch {} }
+          if (b && !buttonDisabled(b)) { try { b.click(); } catch {} }
           if (await waitFor(() => editorText().trim() === "" || !!stopButton(), 1200)) return;
         }
         return;
       }
       // Wait for the control to be in its SEND role (proof ProseMirror registered
       // the text, and that no generation is in flight).
-      await waitFor(() => !!sendButton(), 1500);
-      // Still not a send button? Either a generation really is running (in which
-      // case unwedge refuses and we fall through), or the control is stuck in its
-      // stop role with nothing generating - the case that stranded the result.
-      if (!sendButton()) await unwedgeStopPersistently();
+      await waitFor(() => !!sendButton() && !buttonDisabled(sendButton()), 3000);
       const btn = sendButton();
-      // Disabled send = a quota wall, not a wedge. Clicking it does nothing and
-      // Enter is refused too, so return now and let scanError surface the reason
-      // instead of burning the caller's retries in silence.
-      if (btn && btn.disabled) { diag("send.disabled", {}); return; }
+      // A disabled control can mean a quota wall, upload, or rejected edit.
+      // Report it explicitly instead of pretending the message was submitted.
+      if (btn && buttonDisabled(btn)) throw new Error("ChatGPT has disabled Send. Check the page for a usage limit or an unfinished upload, then try again.");
       if (btn) { btn.click(); return; }
-      // Fallback: Enter sends in ChatGPT's composer.
-      const o = { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true, cancelable: true };
-      ed.dispatchEvent(new KeyboardEvent("keydown", o));
-      ed.dispatchEvent(new KeyboardEvent("keyup", o));
+      throw new Error("ChatGPT's Send button is unavailable. Wait for generation to finish or reload the tab.");
     } finally {
-      if (relock) { const e2 = getEditor(); if (e2) e2.setAttribute("contenteditable", "false"); }
+      if (relock) {
+        const e2 = getEditor();
+        if (e2) {
+          if (isTextarea(e2)) e2.readOnly = true;
+          else e2.setAttribute("contenteditable", "false");
+        }
+      }
     }
   }
 
@@ -617,7 +602,7 @@ const ZSProvider = (() => {
   function enforceComposer() { return { ready: true }; }
   async function ensureComposerReady(reason) {
     diag("mode_ready", { reason, provider: "chatgpt" });
-    return { ready: !!getEditor() };
+    return composerStatus();
   }
 
   // ── Error / limit detection (site chrome only) ────────────────────────────
@@ -630,17 +615,7 @@ const ZSProvider = (() => {
   // and tell the user.
   const sendIsDisabled = () => {
     const b = submitButton();
-    return !!b && !isStopBtn(b) && b.disabled;
-  };
-  // The nastier variant: the control is stuck in its STOP role AND disabled,
-  // while nothing is generating. unwedgeStop() cannot help - clicking a disabled
-  // button does nothing - and neither does any DOM-side nudge: an input event,
-  // blur+focus and a real edit were all tried live and left it at
-  // "stop-button (disabled)". Only reloading the page clears it, so the honest
-  // move is to say so instead of silently retrying forever.
-  const composerWedged = () => {
-    const b = submitButton();
-    return !!b && isStopBtn(b) && b.disabled && !genActive();
+    return !!b && !isStopBtn(b) && buttonDisabled(b);
   };
   function pausedNotice() {
     // Only walk the DOM once the cheap signal (a disabled send) already says
@@ -662,9 +637,6 @@ const ZSProvider = (() => {
       }
       // Composer has our text but ChatGPT refuses to accept it.
       if (editorText().trim() !== "") {
-        if (composerWedged()) {
-          return "ChatGPT's composer is stuck on \"stop\" and won't send - reload the page to recover this conversation.";
-        }
         if (sendIsDisabled()) {
           return pausedNotice() ||
             "ChatGPT will not accept the message - its send button is disabled (quota reached, or the chat is paused).";
@@ -719,8 +691,9 @@ const ZSProvider = (() => {
   // ── New chat navigation ───────────────────────────────────────────────────
   function findNewChatButton() {
     return document.querySelector('a[data-testid="create-new-chat-button"]') ||
+      [...document.querySelectorAll('[data-mobile-new-chat]')].find(visible) ||
       [...document.querySelectorAll('a[href="/"], button')].find(
-        (a) => a.offsetParent !== null && /new chat|nouvelle discussion|nouveau chat/i.test(a.getAttribute("aria-label") || a.textContent || "")
+        (a) => visible(a) && /new chat|nouvelle discussion|nouveau chat|nowy czat/i.test(a.getAttribute("aria-label") || a.textContent || "")
       ) || null;
   }
   async function openNewChat() {
@@ -882,6 +855,7 @@ const ZSProvider = (() => {
   return {
     id: "chatgpt",
     displayName: "ChatGPT",
+    strictStartup: true,
     timings,
     // Exported for test-chatgpt.js (the Node smoke test drives it against a stub
     // DOM). The core reads replies through itemText/classifyText, not this.
@@ -915,20 +889,21 @@ const ZSProvider = (() => {
       if (d) diag = d;
       // Version beacon: stamp the loaded build onto <html> so a reload can be
       // confirmed from the page (read document.documentElement.dataset.zsGptVer).
-      try { document.documentElement.setAttribute("data-zs-gpt-ver", "2026-08-13_cmtap+toolkey"); } catch {}
+      try { document.documentElement.setAttribute("data-zs-gpt-ver", "1.6.2-chatgpt-layout"); } catch {}
     },
     // turns
     allItems, isUserItem, isAssistantItem, itemText, classifyText,
     assistantCount, userCount, lastAssistant, lastAssistantId, itemKey, readAssistant,
     streamLen, snapshot,
     // composer / state
-    getEditor, editorText, chatIsEmpty, isFreshChat, composerFrame, barMount,
+    getEditor, editorText, chatIsEmpty, isFreshChat, composerFrame, barAnchor, composerStatus,
+    barAnchorGap: 18, // clears the native input wrapper's negative top margin
     // Cover the scrolling text band, and lift the core's 200px clamp past that
     // band's own ~245px ceiling so a full composer is covered edge to edge.
     coverTarget,
     coverMaxH: 280,
     setInputLock, typeAndSend, stopGeneration,
-    isGenerating, isBusyNow, isHardGenerating,
+    isGenerating, isBusyNow, isHardGenerating, hasActiveGeneration,
     enforceComposer, ensureComposerReady,
     turnHalted, findContinueBtn, clickContinueBtn,
     scanError, isTooLongMsg, isBusyMsg,

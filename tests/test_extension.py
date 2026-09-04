@@ -15,7 +15,7 @@ class ExtensionReleaseTests(unittest.TestCase):
     def test_manifest_identity_and_hy4_registration(self):
         self.assertEqual(self.manifest["manifest_version"], 3)
         self.assertEqual(self.manifest["name"], "StudioLink Lite")
-        self.assertEqual(self.manifest["version"], "1.6.0")
+        self.assertEqual(self.manifest["version"], "1.6.2")
         scripts = self.manifest["content_scripts"]
         hy4 = [entry for entry in scripts if "https://www.workbuddy.ai/*" in entry["matches"]]
         self.assertEqual(len(hy4), 1)

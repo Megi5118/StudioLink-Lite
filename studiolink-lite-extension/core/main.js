@@ -316,6 +316,7 @@
         ui.banner("warn", "Message could not be sent",
           `${P.displayName} did not accept the injected message after ${tries} attempts. ` +
           `Send a short message yourself (e.g. "continue") to resume the agent.`);
+        if (P.strictStartup) throw new Error(`${P.displayName} did not accept the message. Reload the tab and start in a new chat.`);
       }
       return base;
     } finally {
@@ -521,7 +522,8 @@
       // here parsed the half-written JSON and stamped a false "bad JSON" error
       // while GLM was still typing. RESPONSE_TIMEOUT still bounds a truly stuck one.
       const stuckDone = started && d.reply && Date.now() - lastChangeAt > STABLE_MS &&
-        !(gen && ZSParse.hasOpenToolBlock(d.reply));
+        !(gen && ZSParse.hasOpenToolBlock(d.reply)) &&
+        !(P.hasActiveGeneration && P.hasActiveGeneration());
       if ((gen || effectiveBlock) && !stuckDone) {
         // DIAG: attribute this wait. genOffFirstAt set ⇒ we are PAST first stop,
         // so any wait here is tail latency: either gen flickered back on, or an
@@ -1730,6 +1732,13 @@
   // ════════════════════════════════════════════════════════════════════════
   async function startSession() {
     if (A.running || A.starting) return;
+    if (P.composerStatus) {
+      const page = P.composerStatus();
+      if (!page.ready) {
+        ui.banner("warn", page.title, page.detail);
+        return;
+      }
+    }
     // "Start session" is allowed ONLY on a blank conversation. Opening an
     // EXISTING conversation must never trigger the bootstrap.
     if (!P.chatIsEmpty() && !A.started) {
@@ -1764,8 +1773,8 @@
       const modeState = await P.ensureComposerReady("startup");
       if (!alive()) return;
       if (!modeState.ready) {
-        ui.banner("warn", `${P.displayName} mode not ready`,
-          `Could not switch ${P.displayName} to the required mode. Start a new chat or reload the page, then try again.`);
+        ui.banner("warn", modeState.title || `${P.displayName} mode not ready`,
+          modeState.detail || `Could not switch ${P.displayName} to the required mode. Start a new chat or reload the page, then try again.`);
         return;
       }
       const prompt = systemPrompt();
@@ -1779,6 +1788,9 @@
       // The user halted the bootstrap (our Stop or the site's native stop). Do
       // NOT declare the session ready - abort quietly so "Start" stays available.
       if (A.stop || startRes.kind === "stopped") { diag("start.aborted", { kind: startRes.kind }); return; }
+      if (P.strictStartup && !["text", "tool"].includes(startRes.kind)) {
+        throw new Error(startRes.detail || `ChatGPT startup did not finish (${startRes.kind}). Open a new chat and try again.`);
+      }
 
       // If the model calls list_commands as instructed, run it and wait for the "ready" reply.
       const firstName = startRes.calls && startRes.calls[0] && startRes.calls[0].tool;
@@ -1786,6 +1798,7 @@
           (firstName === "list_commands" || firstName === "list_tools")) {
         decorate.toolBox(startRes.item, "Loading commands", "run", "", true);
         const toolFeedback = await runTool(startRes.calls[0]);
+        if (!alive()) return;
         // Roblox down short-circuits list_commands into a plain "offline" note
         // (main.js, list_commands handler) instead of the real catalogue - detect
         // that and show it as such, rather than the STALE cached tool count below
@@ -1798,9 +1811,13 @@
           decorate.toolBox(startRes.item, "Loading commands", "done", `${A.toolList.length} commands`, true);
         }
         const base2 = await submitAndGetBase(toolFeedback);
+        if (!alive()) return;
         const readyRes = await waitForResponse(base2); // wait for "I'm ready" reply
         if (!alive()) return;
         if (A.stop || readyRes.kind === "stopped") { diag("start.aborted", { kind: readyRes.kind }); return; }
+        if (P.strictStartup && !["text", "tool"].includes(readyRes.kind)) {
+          throw new Error(readyRes.detail || `ChatGPT did not finish loading the commands (${readyRes.kind}). Open a new chat and try again.`);
+        }
       }
       A.started = true;
       rememberSession(P.conversationKey()); // survives virtualization AND reloads
@@ -1812,6 +1829,9 @@
       // Only tear down our OWN starting state. If we were superseded (the user
       // opened another chat), the newer flow / syncSessionState owns it now.
       if (alive()) {
+        if (P.strictStartup && !A.started && !P.chatIsEmpty()) {
+          markStartupIncomplete(A.startingKey || P.conversationKey());
+        }
         A.starting = false;
         A.startingKey = null;
         ui.setStarting(false);
@@ -3055,7 +3075,7 @@
         const bh = bar.offsetHeight || 34;
         if (anchorPadEl && anchorPadEl !== anchorEl) clearAnchorPad();
         anchorPadEl = anchorEl;
-        anchorEl.style.paddingTop = (bh + 6) + "px"; // reserve the strip the bar sits in (+gap)
+        anchorEl.style.paddingTop = (bh + (P.barAnchorGap ?? 6)) + "px"; // reserve the strip plus the provider's input clearance
         bar.style.left = Math.round(r.left) + "px";
         bar.style.top = Math.round(r.top) + "px";
         bar.style.width = Math.round(r.width) + "px";
@@ -3613,8 +3633,11 @@
   // ════════════════════════════════════════════════════════════════════════
 
   function currentSessionStatus() {
+    const page = P.composerStatus ? P.composerStatus() : { ready: true };
     return {
       provider: P.id,
+      pageReady: page.ready,
+      pageDetail: page.detail || "",
       active: !!A.started,
       busy: !!(A.running || A.starting || A.injecting || A.stopping),
       state: A.stopping ? "stopping" : A.starting ? "connecting" :
@@ -3634,7 +3657,7 @@
         diag("session.startFailed", { error: String(error && error.message || error) });
         ui.toast("Could not start the session.");
       });
-      sendResponse({ ...currentSessionStatus(), busy: true, state: "connecting" });
+      sendResponse(currentSessionStatus());
     } else if (msg && msg.type === "sll-stop-session") {
       if (A.running || A.starting || A.injecting) stopLoop();
       sendResponse(currentSessionStatus());
@@ -3671,20 +3694,33 @@
   // (P.conversationKey()): once we have seen the marker for a key, we remember
   // it (persisted so it survives reloads). We never flip while busy.
   const startedSessions = new Set();
+  const failedStartupSessions = new Set();
   let lastSyncPath = null;
+  function markStartupIncomplete(path) {
+    if (!path) return;
+    failedStartupSessions.add(path);
+    startedSessions.delete(path);
+    try { chrome.storage.local.set({ zsFailedStartupSessions: [...failedStartupSessions].slice(-300), zsStartedSessions: [...startedSessions].slice(-300) }); } catch {}
+  }
   function rememberSession(path) {
     // A falsy key = a TRANSIENT conversation URL (e.g. Gemini's /app before an
     // id is assigned). Remembering it would mark every future fresh chat as
     // "already started" and kill the Start gate. The real key is remembered by
     // the next sync once the site assigns the conversation its id.
     if (!path) return;
+    if (failedStartupSessions.delete(path)) {
+      try { chrome.storage.local.set({ zsFailedStartupSessions: [...failedStartupSessions].slice(-300) }); } catch {}
+    }
     if (startedSessions.has(path)) return;
     startedSessions.add(path);
     try { chrome.storage.local.set({ zsStartedSessions: [...startedSessions].slice(-300) }); } catch {}
   }
   // Load the persisted set once, then re-sync.
   try {
-    chrome.storage.local.get("zsStartedSessions", (r) => {
+    chrome.storage.local.get(["zsStartedSessions", "zsFailedStartupSessions"], (r) => {
+      if (r && Array.isArray(r.zsFailedStartupSessions)) {
+        for (const p of r.zsFailedStartupSessions) failedStartupSessions.add(p);
+      }
       if (r && Array.isArray(r.zsStartedSessions)) {
         for (const p of r.zsStartedSessions) startedSessions.add(p);
         syncSessionState();
@@ -3726,8 +3762,14 @@
     if (A.starting) {
       const key = P.conversationKey();
       if (A.startingKey == null) {
-        if (key && !P.chatIsEmpty()) A.startingKey = key; // pin the stable id
-      } else if (key !== A.startingKey && P.chatIsEmpty()) {
+        if (key && !P.chatIsEmpty()) {
+          A.startingKey = key; // pin the stable id
+          // A reload mid-bootstrap must not turn the prompt alone into a ready
+          // session. Successful startup clears this through rememberSession.
+          if (P.strictStartup) markStartupIncomplete(key);
+        }
+      } else if (key !== A.startingKey && (P.strictStartup || P.chatIsEmpty())) {
+        if (P.strictStartup) markStartupIncomplete(A.startingKey);
         A.startGen++;
         A.starting = false;
         A.startingKey = null;
@@ -3761,6 +3803,14 @@
     }
     if (A.starting || A.injecting || A.running) return;
     const path = P.conversationKey();
+    // A bootstrap prompt alone is not proof of success. Do not re-activate a
+    // failed ChatGPT startup from that prompt on the next sweep or page reload.
+    if (P.strictStartup && path && failedStartupSessions.has(path)) {
+      A.started = false;
+      ui.setStarted(false);
+      lastSyncPath = path;
+      return;
+    }
     const markerInDom = domHasZsSignal();
     if (markerInDom) rememberSession(path);
     let has;

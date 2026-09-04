@@ -55,6 +55,16 @@ macOS and Linux launch support inherited from the upstream project remains inclu
 
 After updating the project files, click **Reload** on the extension card and reload any already-open AI tabs.
 
+### ChatGPT compatibility (extension 1.6.2)
+
+Version 1.6.2 only fixes the ChatGPT composer layout: the StudioLink bar is now anchored outside the native grid, so it cannot squeeze the input or shift the send/voice controls. To verify geometry locally, open `tests/chatgpt-layout.html` through the local HTTP server described below.
+
+Use a signed-in ChatGPT session in the full chat interface and start a new, empty chat. The lightweight interface observed on the signed-out page submits a form with full-page navigation; that flow is not supported by the in-page agent. The extension now detects it and explains why startup is unavailable. Signing in is a prerequisite, not a guarantee that every ChatGPT UI variant is supported.
+
+Version 1.6.1 fixes long-reasoning detection, input verification, incomplete startup state and stale CodeMirror snapshots. It does not add permissions or change the Python bridge (still version 1.6.0). After replacing an unpacked extension folder, keep only one copy enabled and reload both the extension and ChatGPT tab.
+
+Focused checks: `node --test tests/test_chatgpt_startup.js`, `node studiolink-lite-extension/test-chatgpt.js`, and `node studiolink-lite-extension/test-core-main.js`. For native browser editing tests, serve the repository locally (`py -3 -m http.server 18761 --bind 127.0.0.1`), open `http://127.0.0.1:18761/tests/chatgpt-dom.html`, and click **Run tests**. These fixtures do not contact ChatGPT or Roblox and are not a substitute for a signed-in end-to-end test.
+
 ## Start the local bridge
 
 ### Windows

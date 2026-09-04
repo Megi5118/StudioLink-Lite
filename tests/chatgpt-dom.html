@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>StudioLink Lite — ChatGPT DOM regression tests</title>
+<style>
+  body { font: 16px system-ui; margin: 24px; }
+  [contenteditable], textarea { white-space: pre-wrap; min-height: 60px; border: 1px solid #888; padding: 8px; }
+  #results { white-space: pre-wrap; }
+  .pass { color: #176534; } .fail { color: #b11; }
+</style>
+<h1>ChatGPT DOM regression tests</h1>
+<p>Local fixtures only. These tests do not send anything to ChatGPT or Roblox.</p>
+<button id="run">Run tests</button>
+<pre id="results"></pre>
+<section id="fixture"></section>
+<script src="../studiolink-lite-extension/providers/chatgpt-cm.js"></script>
+<script src="../studiolink-lite-extension/providers/chatgpt.js"></script>
+<script src="chatgpt-dom.js"></script>
+</html>

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="pl" class="dark">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StudioLink — test układu ChatGPT</title>
+<link rel="stylesheet" href="../studiolink-lite-extension/overlay.css">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #000; color: #eee; font: 15px Arial, sans-serif; }
+  #test-controls { padding: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
+  #test-controls button { background: #292929; color: #ddd; border: 1px solid #555; padding: 7px 10px; border-radius: 6px; }
+  main { width: min(768px, calc(100% - 32px)); margin: 44px auto; }
+  h1 { font-size: 24px; font-weight: 400; text-align: center; margin: 0 0 34px; }
+  form { margin: 0; }
+  [data-composer-surface] {
+    display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: "primary primary primary" "leading footer trailing";
+    gap: 12px 8px; padding: 16px; border-radius: 28px; background: #212121; overflow: clip;
+  }
+  [data-composer-surface].legacy { grid-template-areas: "header header header" "primary primary primary" "leading footer trailing"; }
+  .input-band { grid-area: primary; min-width: 0; margin-top: -10px; }
+  #prompt-textarea { min-height: 24px; white-space: pre-wrap; outline: none; line-height: 24px; overflow-wrap: anywhere; }
+  #prompt-textarea:empty::before { content: "Zapytaj o cokolwiek"; color: #aaa; pointer-events: none; }
+  .native-leading { grid-area: leading; display: flex; align-items: center; gap: 20px; }
+  .native-trailing { grid-area: trailing; display: flex; align-items: center; gap: 12px; }
+  .native-leading button, .native-trailing button { border: 0; color: #eee; background: transparent; padding: 4px; font: inherit; }
+  #composer-submit-button { width: 36px; height: 36px; border-radius: 50%; background: #7c4ad6; font-size: 23px; }
+  #test-results { margin: 20px auto; width: min(768px, calc(100% - 32px)); white-space: pre-wrap; font-size: 13px; line-height: 1.6; }
+  #test-results.pass { color: #86d9a5; } #test-results.fail { color: #ff9a9a; }
+</style>
+<nav id="test-controls">
+  <button id="empty">Puste pole</button><button id="typed">Z tekstem</button>
+  <button id="narrow">Wąski widok</button><button id="wide">Szeroki widok</button>
+  <button id="run-layout">Testuj układ</button>
+</nav>
+<main>
+  <h1>Co dzisiaj chodzi Ci po głowie?</h1>
+  <form>
+    <div data-composer-surface>
+      <div class="input-band"><div id="prompt-textarea" contenteditable="true"></div></div>
+      <div class="native-leading"><button type="button" aria-label="Dodaj pliki">＋</button><button type="button">Błyskawiczny⌄</button></div>
+      <div class="native-trailing"><button type="button" aria-label="Mikrofon">♩</button><button type="button" id="composer-submit-button" data-testid="send-button" aria-label="Wyślij">↑</button></div>
+    </div>
+  </form>
+</main>
+<pre id="test-results">Lokalny model układu ze zrzutów; rzeczywisty adapter, CSS i skrypt interfejsu rozszerzenia. Brak połączenia z ChatGPT lub Roblox.</pre>
+<script>
+  // Mock only extension transport. The real provider and UI below remain intact.
+  window.chrome = window.chrome || {};
+  chrome.runtime = {
+    getManifest: () => ({ version: "1.6.2" }),
+    onMessage: { addListener() {} },
+    sendMessage: (_message, callback) => callback({ connected: false, servers: [] })
+  };
+  chrome.storage = { local: { get: (_keys, callback) => callback({}), set() {} } };
+  document.querySelector("form").addEventListener("submit", (e) => e.preventDefault());
+</script>
+<script src="../studiolink-lite-extension/core/config.js"></script>
+<script src="../studiolink-lite-extension/core/parser.js"></script>
+<script src="../studiolink-lite-extension/providers/chatgpt.js"></script>
+<script src="../studiolink-lite-extension/core/main.js"></script>
+<script src="chatgpt-layout.js"></script>
+</html>

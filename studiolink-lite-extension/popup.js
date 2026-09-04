@@ -45,11 +45,15 @@ function renderBridge(s) {
 }
 
 function renderAgent(s) {
+  const previousPageDetail = agentStatus.pageReady === false ? agentStatus.pageDetail : null;
   agentStatus = s || agentStatus;
   if (agentStatus.busy) state("agent-dot", "agent-state", "connecting", "Working");
   else if (agentStatus.active) state("agent-dot", "agent-state", "connected", "Active");
+  else if (agentStatus.pageReady === false) state("agent-dot", "agent-state", "error", "Page not ready");
   else state("agent-dot", "agent-state", "", "Idle");
-  byId("start").disabled = !!agentStatus.busy || !!agentStatus.active;
+  byId("start").disabled = !!agentStatus.busy || !!agentStatus.active || agentStatus.pageReady === false;
+  if (agentStatus.pageReady === false && agentStatus.pageDetail) byId("hint").textContent = agentStatus.pageDetail;
+  else if (previousPageDetail && byId("hint").textContent === previousPageDetail) byId("hint").textContent = "";
   byId("stop").disabled = !agentStatus.busy;
   if (!providerChoiceLocked && agentStatus.provider && PROVIDERS.some((p) => p.id === agentStatus.provider)) {
     providerSelect.value = agentStatus.provider;
@@ -84,6 +88,7 @@ function sendToSelected(type, openIfMissing = false) {
         return;
       }
       if (result) renderAgent(result);
+      if (result && result.pageReady === false) return;
       byId("hint").textContent = type === "sll-stop-session" ? "Session stopped." : "Session command sent.";
     });
   });
