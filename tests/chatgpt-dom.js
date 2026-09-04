@@ -80,9 +80,25 @@
         await rejects(() => P.typeAndSend("replacement"), /did not accept the complete message/);
         assert(ed.getAttribute("contenteditable") === "false", "Lock not restored on error");
       });
-      await test("editor replaced by page during input is not submitted", async () => {
+      await test("React editor replacement with complete text is still submitted", async () => {
         const ed = mount();
-        ed.addEventListener("input", () => ed.replaceWith(ed.cloneNode(true)), { once: true });
+        ed.addEventListener("input", () => {
+          const replacement = ed.cloneNode(true);
+          // React's controlled state carries the complete draft into its new DOM
+          // node; model that explicitly rather than relying on clone timing.
+          replacement.textContent = ed.textContent;
+          ed.replaceWith(replacement);
+        }, { once: true });
+        await P.typeAndSend("new text");
+        assert(clicks === 1, "Complete text in the replacement editor should send once");
+      });
+      await test("React editor replacement with partial text still fails closed", async () => {
+        const ed = mount();
+        ed.addEventListener("input", () => {
+          const replacement = ed.cloneNode(true);
+          replacement.textContent = "new";
+          ed.replaceWith(replacement);
+        }, { once: true });
         await rejects(() => P.typeAndSend("new text"), /did not accept the complete message/);
       });
       await test("aria-disabled Send is never clicked", async () => {

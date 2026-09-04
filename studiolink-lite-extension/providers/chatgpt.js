@@ -232,6 +232,16 @@ const ZSProvider = (() => {
     return e ? (isTextarea(e) ? e.value : e.innerText || e.textContent || "") : "";
   };
 
+  // React may replace the editable node while committing a large input. Compare
+  // the complete logical text, not the exact transient DOM shape; only line
+  // endings, NBSPs, and trailing DOM newlines are presentation noise. Never
+  // compare only a prefix or a character count.
+  const compareEditorText = (value) => String(value == null ? "" : value)
+    .replace(/\u00a0/g, " ")
+    .replace(/\r\n?/g, "\n")
+    .replace(/\n+$/, "");
+  const editorOwner = (el) => el && (el.closest("form") || el.parentElement);
+
   function composerStatus() {
     const lightweight = [...document.querySelectorAll("form[data-mobile-composer]")].find(visible);
     if (lightweight) {
@@ -546,16 +556,30 @@ const ZSProvider = (() => {
     if (!ed) throw new Error("ChatGPT input box not found");
     text = truncateForSend(text);
     const relock = _locked;
+    // Capture the composer before editing starts. A controlled React update may
+    // detach the original editor node, making closest()/parentElement unusable
+    // on it after the replacement has happened.
+    const owner = editorOwner(ed);
     if (relock) {
       if (isTextarea(ed)) ed.readOnly = false;
       else ed.setAttribute("contenteditable", "true");
     }
     try {
       await setEditorText(ed, text);
-      // Never submit a partial/ignored edit. React or a composer replacement can
-      // reject the browser editing commands even when no JavaScript error fires.
-      const normalize = (value) => String(value).replace(/\r\n?/g, "\n").replace(/\n+$/, "");
-      if (getEditor() !== ed || normalize(editorText()) !== normalize(text)) {
+      // Never submit a partial/ignored edit. React may replace the editor node
+      // during a large commit, so identity alone is not a failure. Accept a new
+      // node only when it remains in the same composer and contains the COMPLETE
+      // logical message; a missing line still fails closed.
+      const actual = getEditor();
+      const actualOwner = editorOwner(actual);
+      const ownerMatches = !!actual && !!owner && (actualOwner === owner || owner.contains(actual));
+      if (!actual || !ownerMatches || compareEditorText(editorText()) !== compareEditorText(text)) {
+        try { diag("send.readbackMismatch", {
+          expectedChars: String(text).length,
+          actualChars: String(editorText()).length,
+          editorReplaced: !!actual && actual !== ed,
+          sameComposer: ownerMatches,
+        }); } catch {}
         throw new Error("ChatGPT did not accept the complete message in its input. Reload the tab and try again; no message was submitted.");
       }
       // Attach images LAST, right before the send click - see gemini.js/deepseek.js
@@ -889,7 +913,7 @@ const ZSProvider = (() => {
       if (d) diag = d;
       // Version beacon: stamp the loaded build onto <html> so a reload can be
       // confirmed from the page (read document.documentElement.dataset.zsGptVer).
-      try { document.documentElement.setAttribute("data-zs-gpt-ver", "1.6.2-chatgpt-layout"); } catch {}
+      try { document.documentElement.setAttribute("data-zs-gpt-ver", "1.6.3-chatgpt-readback"); } catch {}
     },
     // turns
     allItems, isUserItem, isAssistantItem, itemText, classifyText,

@@ -1,6 +1,10 @@
-# StudioLink Lite 1.6.2 — tylko układ ChatGPT
+# StudioLink Lite 1.6.3 — układ i readback ChatGPT
 
-Poprawka dotyczy przesuniętego paska i przycisków widocznych na przesłanych zrzutach. Nie zmienia wysyłania wiadomości, narzędzi Roblox ani pozostałych integracji.
+Poprawka obejmuje przesunięty pasek/przyciski ze zrzutów oraz błąd zatrzymywania dużego promptu po jego wpisaniu. Nie zmienia narzędzi Roblox ani pozostałych integracji.
+
+## Nowy błąd z dużym promptem
+
+Jeśli po wpisaniu całej treści ChatGPT przez React wymieni element edytora, wcześniejsza kontrola porównywała chwilowy węzeł DOM znak w znak i pokazywała „did not accept the complete message”. W 1.6.3 porównywana jest pełna treść logiczna; tolerowane są wyłącznie końce linii, NBSP i końcowe znaki nowej linii dodane przez DOM. Element musi pozostać w tym samym composerze. Gdy brakuje choćby części treści, wysyłka nadal zostaje zablokowana.
 
 ## Przyczyna i poprawka
 

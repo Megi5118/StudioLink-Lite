@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.3 - ChatGPT input readback fix
+
+- Treat a React replacement of the ChatGPT editor as valid when the complete logical message is present in the same composer.
+- Tolerate only harmless line-ending/NBSP/trailing-newline formatting while retaining a fail-closed full-content comparison.
+- Keep diagnostics length-only; no prompt text is logged or sent when readback fails.
+- Add regression coverage for complete and partial editor replacement. Layout and all other providers are unchanged.
+
 ## 1.6.2 - ChatGPT layout only
 
 - Keep the StudioLink bar outside ChatGPT's native composer grid. A missing named `header` area can no longer create an implicit column that squeezes the input and send/voice controls.

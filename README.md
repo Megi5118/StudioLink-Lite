@@ -55,9 +55,9 @@ macOS and Linux launch support inherited from the upstream project remains inclu
 
 After updating the project files, click **Reload** on the extension card and reload any already-open AI tabs.
 
-### ChatGPT compatibility (extension 1.6.2)
+### ChatGPT compatibility (extension 1.6.3)
 
-Version 1.6.2 only fixes the ChatGPT composer layout: the StudioLink bar is now anchored outside the native grid, so it cannot squeeze the input or shift the send/voice controls. To verify geometry locally, open `tests/chatgpt-layout.html` through the local HTTP server described below.
+Version 1.6.3 keeps the 1.6.2 composer-layout fix and additionally handles React replacing the editor during a large injection. It accepts the replacement only after comparing the complete logical message in the same composer; partial input is still rejected. To verify geometry locally, open `tests/chatgpt-layout.html` through the local HTTP server described below.
 
 Use a signed-in ChatGPT session in the full chat interface and start a new, empty chat. The lightweight interface observed on the signed-out page submits a form with full-page navigation; that flow is not supported by the in-page agent. The extension now detects it and explains why startup is unavailable. Signing in is a prerequisite, not a guarantee that every ChatGPT UI variant is supported.
 
