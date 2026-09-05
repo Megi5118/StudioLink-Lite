@@ -227,9 +227,27 @@ const ZSProvider = (() => {
   const getEditor = () => [...document.querySelectorAll(S.editor)].find((el) =>
     visible(el) && (el.tagName === "TEXTAREA" || el.hasAttribute("contenteditable"))) || null;
   const isTextarea = (el) => !!el && el.tagName === "TEXTAREA";
+  function readEditorNode(node) {
+    if (node.nodeType === 3) return node.nodeValue || "";
+    if (node.nodeType !== 1) return "";
+    if (node.tagName === "BR") {
+      return node.classList.contains("ProseMirror-trailingBreak") ||
+        (BLOCK_TAGS.test(node.parentNode.tagName) && node.parentNode.childNodes.length === 1) ? "" : "\n";
+    }
+    let text = "", previousBlock = false;
+    const children = [...node.childNodes];
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
+      const block = child.nodeType === 1 && BLOCK_TAGS.test(child.tagName);
+      if (i > 0 && (block || previousBlock)) text += "\n";
+      text += readEditorNode(child);
+      previousBlock = block;
+    }
+    return text;
+  }
   const editorText = () => {
     const e = getEditor();
-    return e ? (isTextarea(e) ? e.value : e.innerText || e.textContent || "") : "";
+    return e ? (isTextarea(e) ? e.value : readEditorNode(e)) : "";
   };
 
   // React may replace the editable node while committing a large input. Compare
@@ -913,7 +931,7 @@ const ZSProvider = (() => {
       if (d) diag = d;
       // Version beacon: stamp the loaded build onto <html> so a reload can be
       // confirmed from the page (read document.documentElement.dataset.zsGptVer).
-      try { document.documentElement.setAttribute("data-zs-gpt-ver", "1.6.3-chatgpt-readback"); } catch {}
+      try { document.documentElement.setAttribute("data-zs-gpt-ver", "1.6.4-chatgpt-readback"); } catch {}
     },
     // turns
     allItems, isUserItem, isAssistantItem, itemText, classifyText,

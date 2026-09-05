@@ -56,6 +56,42 @@
         assert(ed.getAttribute("contenteditable") === "false", "Lock not restored");
         assert(clicks === 1, "Expected one send");
       });
+      await test("ProseMirror paragraphs preserve logical lines rather than visual spacing", () => {
+        mount('<div id="prompt-textarea" class="ProseMirror" contenteditable="true"><p>first</p><p><br class="ProseMirror-trailingBreak"></p><p>  local x = 1</p><p>last</p></div>');
+        assert(P.editorText() === "first\n\n  local x = 1\nlast", JSON.stringify(P.editorText()));
+      });
+      await test("ProseMirror inline markup and hard breaks preserve code whitespace", () => {
+        mount('<div id="prompt-textarea" class="ProseMirror" contenteditable="true"><p><strong>first</strong><br>  second<br><br class="ProseMirror-trailingBreak"></p><p>last</p></div>');
+        assert(P.editorText() === "first\n  second\n\nlast", JSON.stringify(P.editorText()));
+      });
+      await test("paragraph normalization after input still submits the complete message", async () => {
+        const ed = mount();
+        let pending = false;
+        ed.addEventListener("input", () => {
+          if (pending) return;
+          pending = true;
+          queueMicrotask(() => {
+            const lines = normalize(ed.innerText).split("\n");
+            ed.replaceChildren(...lines.map((line) => {
+              const p = document.createElement("p");
+              if (line) p.textContent = line;
+              else p.innerHTML = '<br class="ProseMirror-trailingBreak">';
+              return p;
+            }));
+            pending = false;
+          });
+        });
+        const text = 'first\n\n  print("a  b")\nlast';
+        await P.typeAndSend(text);
+        assert(P.editorText() === text && clicks === 1, "Normalized message must send once");
+      });
+      await test("a missing internal blank line is still rejected", async () => {
+        const ed = mount();
+        ed.addEventListener("input", () => queueMicrotask(() => {
+          ed.innerHTML = '<p>first</p><p>last</p>';
+        }), { once: true });
+        await rejects(() => P.typeAndSend("first\n\nlast"), /did not accept the complete message/);
+      });
       await test("textarea uses native value setter and input event; preserves lock", async () => {
         const ed = mount('<textarea data-testid="prompt-textarea"></textarea>', 'aria-disabled="true"');
         let sawValue = "";

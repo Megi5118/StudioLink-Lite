@@ -34,6 +34,7 @@ function el(tag, opts, children) {
     getAttribute: (n) => (n in attrs ? attrs[n] : null),
     matches: (sel) => classes.some((c) => sel.split(",").map((s) => s.trim()).includes("." + c)),
   };
+  for (const child of node.childNodes) child.parentNode = node;
   node.querySelector = (sel) => {
     const hit = (n) => {
       if (n.nodeType !== 1) return null;
@@ -123,3 +124,30 @@ const withChip = P.textWithout(
   ".zs-chip"
 );
 ok("excluded subtree is skipped", withChip.includes("real reply") && !withChip.includes("execute_luau"));
+
+function readComposer(children, visualText = "visual spacing is not document text") {
+  const editor = el("div", {}, children);
+  editor.innerText = visualText;
+  editor.closest = () => null;
+  editor.getClientRects = () => [{}];
+  editor.hasAttribute = (name) => name === "contenteditable";
+  document.querySelectorAll = () => [editor];
+  return P.editorText();
+}
+const paragraph = (text) => el("p", {}, text ? [text] : [el("br", { class: "ProseMirror-trailingBreak" })]);
+ok("composer paragraph spacing is not counted as extra newlines",
+  readComposer([paragraph("first"), paragraph(""), paragraph("  local x = 1"), paragraph("last")]) === "first\n\n  local x = 1\nlast");
+ok("composer hard breaks and trailing placeholders are distinct",
+  readComposer([el("p", {}, ["first", el("br"), "second", el("br"), el("br", { class: "ProseMirror-trailingBreak" })])]) === "first\nsecond\n");
+ok("composer inline markup preserves spaces",
+  readComposer([el("p", {}, ["  ", el("strong", {}, ["local"]), " x = 1  "])]) === "  local x = 1  ");
+ok("composer empty native blocks preserve internal blank lines",
+  readComposer([el("div", {}, ["first"]), el("div", {}, [el("br")]), el("div", {}, ["last"])]) === "first\n\nlast");
+ok("composer a missing blank line remains distinguishable",
+  readComposer([paragraph("first"), paragraph("last")]) !== "first\n\nlast");
+ok("composer blank placeholders are empty", readComposer([paragraph("")]) === "");
+ok("composer native text and breaks remain compatible",
+  readComposer(["first", el("br"), el("br"), "last"]) === "first\n\nlast");
+const largeDraft = Array.from({ length: 600 }, (_, i) => i % 9 ? `  print(${i})` : "");
+ok("composer 600-line draft retains every blank line and indentation",
+  readComposer(largeDraft.map(paragraph)) === largeDraft.join("\n"));

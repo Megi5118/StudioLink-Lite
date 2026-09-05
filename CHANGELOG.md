@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.4
+
+- Fixed false "did not accept the complete message" startup failures caused by ChatGPT's ProseMirror paragraph spacing.
+- Read logical composer text from paragraphs and hard breaks, preserving blank lines and code indentation while ignoring editor placeholder breaks.
+- Kept complete-message validation: missing lines or truncated input still prevent submission.
+- Added composer readback regression tests for the current paragraph layout and large multiline drafts.
+
 ## 1.6.3
 
 - Fixed ChatGPT React editor replacement during large message injection.
