@@ -42,12 +42,28 @@ const ZSProvider = (() => {
     return (editor && editor.closest(S.composer)) || document.querySelector(S.composer);
   };
   const barAnchor = composerFrame;
+  function contentBlockText(node) {
+    try {
+      const block = JSON.parse(node.getAttribute("data-contentblock"));
+      if (block.type === "text" && typeof block.text === "string") return block.text;
+      if (block.type === "resource_link" && block._meta?.mentionType === "long-text" &&
+          typeof block._meta.fullText === "string") return block._meta.fullText;
+    } catch {}
+    return node.textContent || "";
+  }
+  function expandContentBlocks(root) {
+    root.querySelectorAll("[data-contentblock]").forEach((node) => {
+      node.replaceWith(document.createTextNode(contentBlockText(node)));
+    });
+  }
   const editorText = () => {
     const editor = getEditor();
     if (!editor) return "";
     const blocks = [...editor.children].filter((node) => node.getAttribute("data-slate-node") === "element");
     return normalize(blocks.length
-      ? blocks.map((block) => [...block.querySelectorAll("[data-slate-string]")].map((leaf) => leaf.textContent).join("")).join("\n")
+      ? blocks.map((block) => [...block.querySelectorAll("[data-slate-string], [data-contentblock]")]
+        .filter((leaf) => !leaf.parentElement?.closest("[data-contentblock]"))
+        .map((leaf) => leaf.hasAttribute("data-contentblock") ? contentBlockText(leaf) : leaf.textContent).join("")).join("\n")
       : editor.innerText || editor.textContent);
   };
 
@@ -85,7 +101,7 @@ const ZSProvider = (() => {
       const wanted = normalize(sentText);
       let userIndex = -1;
       for (let index = candidates.length - 1; index >= 0; index--) {
-        const text = normalize(candidates[index].textContent);
+        const text = normalize(itemText(candidates[index]));
         const stablePrefix = wanted.slice(0, 96);
         if (text === wanted ||
             (wanted.length > 24 && (text.includes(wanted) ||
@@ -112,12 +128,14 @@ const ZSProvider = (() => {
     if (!item) return "";
     const clone = item.cloneNode(true);
     clone.querySelectorAll(".zs-chip, button, [aria-hidden=true]").forEach((node) => node.remove());
+    expandContentBlocks(clone);
     return (clone.innerText || clone.textContent || "").trim();
   };
   const classifyText = (item, excludeSelector) => {
     if (!item) return "";
     const clone = item.cloneNode(true);
     clone.querySelectorAll(`.zs-chip${excludeSelector ? `, ${excludeSelector}` : ""}`).forEach((node) => node.remove());
+    expandContentBlocks(clone);
     return (clone.innerText || clone.textContent || "").trim();
   };
   const assistantItems = () => allItems().filter(isAssistantItem);

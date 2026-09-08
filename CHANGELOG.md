@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.2
+
+- Read the full payload of WorkBuddy long-text chips when checking input and identifying sent messages.
+- Preserve strict complete-message validation instead of comparing the collapsed preview.
+
 ## 2.0.1
 
 - Fixed WorkBuddy/Hy4 startup by pasting through Slate instead of replacing its DOM.
