@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.1
+
+- Fixed WorkBuddy/Hy4 startup by pasting through Slate instead of replacing its DOM.
+- Respect disabled send controls, prevent self-interception and verify send acknowledgement.
+- Coalesce WorkBuddy stream scans and ignore changes inside the extension toolbar.
+
 ## 2.0.0
 
 - Published the complete StudioLink Lite package as the 2.0 release.

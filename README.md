@@ -24,11 +24,11 @@ StudioLink Lite connects supported browser AI chats with Roblox Studio through a
 
 **Supported providers:** ChatGPT, Gemini, DeepSeek, Kimi, GLM, Qwen, Arena, Meta AI and Hy4/WorkBuddy.
 
-## Updating to 2.0.0
+## Updating to 2.0.1
 
-Replace your `studiolink-lite-extension` folder with the latest copy, reload StudioLink Lite on your browser's extensions page, and reload the ChatGPT tab. The extension should show version **2.0.0**. Start a new chat and click **Start Roblox agent**.
+Replace your `studiolink-lite-extension` folder with the latest copy, reload StudioLink Lite on your browser's extensions page, and reload the AI chat tab. The extension should show version **2.0.1**. Start a new chat and click **Start Roblox agent**.
 
-Version 2.0.0 is the current StudioLink Lite release. Replace the previous extension folder with this release and reload the browser extension before starting a new Roblox agent session.
+Version 2.0.1 fixes WorkBuddy/Hy4 message insertion and send detection. Replace the previous extension folder with this release and reload the browser extension before starting a new Roblox agent session.
 
 ## License
 
