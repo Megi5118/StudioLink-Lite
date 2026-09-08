@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.0
+
+- Published the complete StudioLink Lite package as the 2.0 release.
+- Replaced the previous repository build with the uploaded 2.0 codebase.
+
 ## 1.6.4
 
 - Fixed false "did not accept the complete message" startup failures caused by ChatGPT's ProseMirror paragraph spacing.
