@@ -3,14 +3,14 @@
 <p align="center"><b>Minimal browser-to-Roblox Studio AI bridge.</b></p>
 
 <p align="center">
-  <img src="assets/studiolink-hero.jpg" alt="StudioLink Lite" width="100%">
+  <img src="assets/studiolink-hero.png" alt="StudioLink Lite" width="100%">
 </p>
 
 StudioLink Lite connects supported browser AI chats with Roblox Studio through a local StudioMCP bridge. No API key is required for browser providers.
 
 ## Requirements
 
-- Python 3
+- Python 3.9+
 - Chromium-based browser
 - Roblox Studio
 - StudioMCP
@@ -18,7 +18,9 @@ StudioLink Lite connects supported browser AI chats with Roblox Studio through a
 ## Setup
 
 1. Load `studiolink-lite-extension` as an unpacked browser extension.
-2. Start the local bridge with `start.bat` on Windows or `MacOS_Start.command` on macOS.
+2. Start the local bridge:
+   - Windows: run `start.bat`.
+   - macOS/Linux: install the dependency with `python3 -m pip install --user websockets`, then run `python3 bridge.py`.
 3. Open Roblox Studio and a supported AI provider.
 4. Select the provider in the extension and start the session.
 
