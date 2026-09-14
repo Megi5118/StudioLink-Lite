@@ -8,6 +8,8 @@
 
 StudioLink Lite connects supported browser AI chats with Roblox Studio through a local StudioMCP bridge. No API key is required for browser providers.
 
+<p align="center"><sub>Autor: Sylo</sub></p>
+
 ## Requirements
 
 - Python 3.9+
