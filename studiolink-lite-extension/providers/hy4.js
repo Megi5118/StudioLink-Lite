@@ -15,6 +15,7 @@ const ZSProvider = (() => {
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   let diag = () => {};
   let sentText = "";
+  let sending = false;
   const learnedRoles = new WeakMap();
 
   const S = {
@@ -34,14 +35,37 @@ const ZSProvider = (() => {
     RESPONSE_TIMEOUT_MS: 300000,
   };
 
-  const normalize = (text) => String(text || "").replace(/\s+/g, " ").trim();
+  const normalize = (text) => String(text || "").replace(/[\u200B\uFEFF]/g, "").replace(/\s+/g, " ").trim();
   const getEditor = () => [...document.querySelectorAll(S.editor)].find((el) => !el.closest("#zs-root")) || null;
   const composerFrame = () => {
     const editor = getEditor();
     return (editor && editor.closest(S.composer)) || document.querySelector(S.composer);
   };
   const barAnchor = composerFrame;
-  const editorText = () => normalize(getEditor() && getEditor().textContent);
+  function contentBlockText(node) {
+    try {
+      const block = JSON.parse(node.getAttribute("data-contentblock"));
+      if (block.type === "text" && typeof block.text === "string") return block.text;
+      if (block.type === "resource_link" && block._meta?.mentionType === "long-text" &&
+          typeof block._meta.fullText === "string") return block._meta.fullText;
+    } catch {}
+    return node.textContent || "";
+  }
+  function expandContentBlocks(root) {
+    root.querySelectorAll("[data-contentblock]").forEach((node) => {
+      node.replaceWith(document.createTextNode(contentBlockText(node)));
+    });
+  }
+  const editorText = () => {
+    const editor = getEditor();
+    if (!editor) return "";
+    const blocks = [...editor.children].filter((node) => node.getAttribute("data-slate-node") === "element");
+    return normalize(blocks.length
+      ? blocks.map((block) => [...block.querySelectorAll("[data-slate-string], [data-contentblock]")]
+        .filter((leaf) => !leaf.parentElement?.closest("[data-contentblock]"))
+        .map((leaf) => leaf.hasAttribute("data-contentblock") ? contentBlockText(leaf) : leaf.textContent).join("")).join("\n")
+      : editor.innerText || editor.textContent);
+  };
 
   function explicitRole(element) {
     if (!element) return null;
@@ -77,7 +101,7 @@ const ZSProvider = (() => {
       const wanted = normalize(sentText);
       let userIndex = -1;
       for (let index = candidates.length - 1; index >= 0; index--) {
-        const text = normalize(candidates[index].textContent);
+        const text = normalize(itemText(candidates[index]));
         const stablePrefix = wanted.slice(0, 96);
         if (text === wanted ||
             (wanted.length > 24 && (text.includes(wanted) ||
@@ -104,12 +128,14 @@ const ZSProvider = (() => {
     if (!item) return "";
     const clone = item.cloneNode(true);
     clone.querySelectorAll(".zs-chip, button, [aria-hidden=true]").forEach((node) => node.remove());
+    expandContentBlocks(clone);
     return (clone.innerText || clone.textContent || "").trim();
   };
   const classifyText = (item, excludeSelector) => {
     if (!item) return "";
     const clone = item.cloneNode(true);
     clone.querySelectorAll(`.zs-chip${excludeSelector ? `, ${excludeSelector}` : ""}`).forEach((node) => node.remove());
+    expandContentBlocks(clone);
     return (clone.innerText || clone.textContent || "").trim();
   };
   const assistantItems = () => allItems().filter(isAssistantItem);
@@ -131,7 +157,14 @@ const ZSProvider = (() => {
       streamChangedAt = Date.now();
     }
   }
-  new MutationObserver(sampleStream).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+  let streamTimer = null;
+  new MutationObserver((records) => {
+    if (streamTimer !== null || records.every((record) => {
+      const element = record.target.nodeType === 1 ? record.target : record.target.parentElement;
+      return element && element.closest("#zs-root");
+    })) return;
+    streamTimer = setTimeout(() => { streamTimer = null; sampleStream(); }, 200);
+  }).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
   const streamLen = () => { sampleStream(); return streamLength; };
 
   function semanticButton(pattern) {
@@ -164,41 +197,56 @@ const ZSProvider = (() => {
     editor.setAttribute("aria-busy", on ? "true" : "false");
   }
 
-  function replaceSlateText(editor, text) {
+  async function replaceSlateText(editor, text) {
     editor.focus();
     const selection = window.getSelection();
     const range = document.createRange();
     range.selectNodeContents(editor);
     selection.removeAllRanges();
     selection.addRange(range);
-    let inserted = false;
-    try { inserted = document.execCommand("insertText", false, text); } catch {}
-    if (!inserted || normalize(editor.textContent) !== normalize(text)) {
-      editor.textContent = text;
-      editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: text }));
-    }
+    document.dispatchEvent(new Event("selectionchange"));
+    await sleep(150);
+    const data = new DataTransfer();
+    data.setData("text/plain", text);
+    editor.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: data }));
   }
 
   const sendButton = () => {
     const frame = composerFrame() || document;
-    return frame.querySelector(S.send) || document.querySelector(S.send);
+    return frame.querySelector(S.send) || semanticButton(/^\s*(send|发送|發送|wyślij)\b/i);
   };
+  const canSend = (button) => button && !button.disabled && button.getAttribute("aria-disabled") !== "true";
   async function typeAndSend(text) {
+    if (sending) throw new Error("WorkBuddy is already sending a message");
     const editor = getEditor();
     if (!editor) throw new Error("WorkBuddy input box not found");
-    sentText = text;
-    replaceSlateText(editor, text);
-    const deadline = Date.now() + 8000;
-    while (Date.now() < deadline) {
-      const button = sendButton();
-      if (button && !button.disabled && normalize(editor.textContent)) {
-        button.click();
-        diag("hy4.send", { registered: true });
-        return;
+    if (!normalize(text)) throw new Error("WorkBuddy cannot send an empty message");
+    sending = true;
+    try {
+      await replaceSlateText(editor, text);
+      const deadline = Date.now() + 8000;
+      while (Date.now() < deadline) {
+        const button = sendButton();
+        if (canSend(button) && editorText() === normalize(text)) {
+          sentText = text;
+          button.click();
+          const acceptedBy = Date.now() + 4000;
+          while (Date.now() < acceptedBy) {
+            if ((getEditor() && !editorText()) || stopButton()) {
+              diag("hy4.send", { registered: true });
+              return;
+            }
+            await sleep(100);
+          }
+          throw new Error("WorkBuddy did not confirm sending. Check its workspace, sign-in and any visible warning before retrying.");
+        }
+        await sleep(100);
       }
-      await sleep(100);
+      if (editorText() !== normalize(text)) throw new Error("WorkBuddy did not accept the complete message in its editor. Reload the page and retry.");
+      throw new Error("WorkBuddy kept Send disabled. Check Select Workspace, sign-in and any visible warning on the page.");
+    } finally {
+      sending = false;
     }
-    throw new Error("WorkBuddy did not enable its Send button");
   }
   function stopGeneration() {
     const button = stopButton();
@@ -229,6 +277,7 @@ const ZSProvider = (() => {
 
   function installSendHooks(handlers) {
     document.addEventListener("keydown", (event) => {
+      if (sending && !event.isTrusted) return;
       const editor = getEditor();
       if (!editor || !editor.contains(event.target) || event.key !== "Enter" || event.shiftKey || event.isComposing) return;
       if (!editorText()) return;
@@ -240,10 +289,11 @@ const ZSProvider = (() => {
       handlers.onUserMessage(assistantCount());
     }, true);
     document.addEventListener("click", (event) => {
+      if (sending && !event.isTrusted) return;
       const button = event.target && event.target.closest && event.target.closest("button");
       if (!button) return;
       if (button === stopButton()) { handlers.onNativeStop(); return; }
-      if (button !== sendButton() || button.disabled || !editorText()) return;
+      if (button !== sendButton() || !canSend(button) || !editorText()) return;
       if (handlers.isBlocked()) { event.preventDefault(); return; }
       if (!handlers.isStarted()) {
         if (chatIsEmpty()) handlers.onBlockedAttempt();
